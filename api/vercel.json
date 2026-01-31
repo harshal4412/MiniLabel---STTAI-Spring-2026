@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "api/index.py"
+    },
+    {
+      "source": "/items/(.*)",
+      "destination": "api/index.py"
+    },
+    {
+      "source": "/seed",
+      "destination": "api/index.py"
+    }
+  ]
+}
