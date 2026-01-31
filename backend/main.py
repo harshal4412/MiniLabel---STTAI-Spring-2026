@@ -3,20 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 import json
-import os
 
 from .database import engine, Base, SessionLocal
 from .models.item import Item
 from .routers import items
 
-if not os.path.exists("./data"):
-    os.makedirs("./data")
-
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="MiniLabel v1",
-    description="A premium internal tool for text and image annotation",
+    description="Vercel Deployment Version",
     version="1.0.0"
 )
 
