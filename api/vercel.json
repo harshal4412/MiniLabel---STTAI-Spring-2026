@@ -1,4 +1,5 @@
 {
+  "version": 2,
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -11,6 +12,14 @@
     {
       "source": "/seed",
       "destination": "api/index.py"
+    },
+    {
+      "source": "/health",
+      "destination": "api/index.py"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/frontend/$1"
     }
   ]
 }

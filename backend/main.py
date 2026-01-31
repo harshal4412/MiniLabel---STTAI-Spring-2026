@@ -33,9 +33,9 @@ def get_db():
     finally:
         db.close()
 
-@app.get("/", include_in_schema=False)
-async def root():
-    return RedirectResponse(url="/docs")
+# @app.get("/", include_in_schema=False)
+# async def root():
+#     return RedirectResponse(url="/docs")
 
 @app.post("/seed", tags=["System"])
 def seed_data(db: Session = Depends(get_db)):
