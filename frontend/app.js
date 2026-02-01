@@ -10,7 +10,7 @@ let canvas, ctx, img;
 
 document.addEventListener('DOMContentLoaded', () => {
     canvas = document.getElementById('image-canvas');
-    ctx = canvas.getContext('2d');
+    if (canvas) ctx = canvas.getContext('2d');
     img = document.getElementById('source-image');
     
     setupCanvasListeners();
@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function fetchItems() {
     try {
         const response = await fetch(`${API_URL}/items`);
+        if (!response.ok) throw new Error('Network response was not ok');
         items = await response.json();
         renderSidebar();
     } catch (e) {
@@ -53,25 +54,29 @@ function getIcon(type) {
 }
 
 async function selectItem(id) {
-    const response = await fetch(`${API_URL}/items/${id}`);
-    currentItem = await response.json();
-    
-    const rawAnn = currentItem.annotation;
-    if (rawAnn) {
-        annotations = typeof rawAnn === 'string' ? JSON.parse(rawAnn) : rawAnn;
-    } else {
-        annotations = [];
+    try {
+        const response = await fetch(`${API_URL}/items/${id}`);
+        currentItem = await response.json();
+        
+        const rawAnn = currentItem.annotation;
+        if (rawAnn) {
+            annotations = typeof rawAnn === 'string' ? JSON.parse(rawAnn) : rawAnn;
+        } else {
+            annotations = [];
+        }
+        
+        activeLabel = null;
+        document.getElementById('welcome-screen').classList.add('hidden');
+        document.getElementById('item-title').innerText = `Item #${id}`;
+        document.getElementById('task-badge').innerText = currentItem.task_type.replace('_', ' ');
+        
+        renderSidebar();
+        renderLabels();
+        setupEditor();
+        renderAnnotations();
+    } catch (e) {
+        console.error("Error selecting item:", e);
     }
-    
-    activeLabel = null;
-    document.getElementById('welcome-screen').classList.add('hidden');
-    document.getElementById('item-title').innerText = `Item #${id}`;
-    document.getElementById('task-badge').innerText = currentItem.task_type.replace('_', ' ');
-    
-    renderSidebar();
-    renderLabels();
-    setupEditor();
-    renderAnnotations();
 }
 
 function renderLabels() {
@@ -133,6 +138,7 @@ function handleTextSelection() {
 }
 
 function setupCanvasListeners() {
+    if (!canvas) return;
     canvas.onmousedown = (e) => {
         if (currentItem?.task_type !== 'bbox' || !activeLabel) return;
         isDrawing = true;
@@ -172,6 +178,7 @@ function setupCanvasListeners() {
 }
 
 function drawBoxes() {
+    if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     annotations.forEach(ann => {
         if (!ann.bbox) return;

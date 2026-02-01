@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 import json
 import os
@@ -89,7 +88,11 @@ async def serve_index():
 
 @app.get("/{path_name:path}")
 async def catch_all(path_name: str):
+    if path_name.startswith(("items", "seed", "health", "docs", "openapi.json")):
+        return RedirectResponse(url=f"/{path_name}")
+        
     file_path = os.path.join("frontend", path_name)
     if os.path.exists(file_path):
         return FileResponse(file_path)
+        
     return FileResponse("frontend/index.html")
