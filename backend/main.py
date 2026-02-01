@@ -1,8 +1,10 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 import json
+import os
 
 from .database import engine, Base, SessionLocal
 from .models.item import Item
@@ -32,10 +34,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-# @app.get("/", include_in_schema=False)
-# async def root():
-#     return RedirectResponse(url="/docs")
 
 @app.post("/seed", tags=["System"])
 def seed_data(db: Session = Depends(get_db)):
@@ -84,3 +82,14 @@ def seed_data(db: Session = Depends(get_db)):
 @app.get("/health", tags=["System"])
 def health_check():
     return {"status": "online", "database": "connected"}
+
+@app.get("/")
+async def serve_index():
+    return FileResponse("frontend/index.html")
+
+@app.get("/{path_name:path}")
+async def catch_all(path_name: str):
+    file_path = os.path.join("frontend", path_name)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return FileResponse("frontend/index.html")
