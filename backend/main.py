@@ -34,10 +34,8 @@ def get_db():
     finally:
         db.close()
 
-@app.post("/seed", tags=["System"])
-def seed_data(db: Session = Depends(get_db)):
+def run_seed_logic(db: Session):
     db.query(Item).delete()
-    
     samples = [
         Item(
             task_type="text_classification",
@@ -70,13 +68,23 @@ def seed_data(db: Session = Depends(get_db)):
             label_config=json.dumps(["Cat", "Eye", "Ear"])
         )
     ]
-    
     db.add_all(samples)
     db.commit()
-    return {
-        "status": "success", 
-        "message": f"Database seeded with {len(samples)} diverse tasks."
-    }
+
+@app.on_event("startup")
+async def startup_event():
+    db = SessionLocal()
+    try:
+        item_count = db.query(Item).count()
+        if item_count == 0:
+            run_seed_logic(db)
+    finally:
+        db.close()
+
+@app.post("/seed", tags=["System"])
+def seed_endpoint(db: Session = Depends(get_db)):
+    run_seed_logic(db)
+    return {"status": "success", "message": "Database seeded manually."}
 
 @app.get("/health", tags=["System"])
 def health_check():
