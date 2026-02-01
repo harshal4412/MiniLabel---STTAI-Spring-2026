@@ -1,4 +1,4 @@
-const API_URL = '';
+let API_URL = '';
 let items = [];
 let currentItem = null;
 let activeLabel = null;
@@ -6,29 +6,40 @@ let annotations = [];
 let isDrawing = false;
 let startX, startY;
 
-const canvas = document.getElementById('image-canvas');
-const ctx = canvas.getContext('2d');
-const img = document.getElementById('source-image');
+let canvas, ctx, img;
+
+document.addEventListener('DOMContentLoaded', () => {
+    canvas = document.getElementById('image-canvas');
+    ctx = canvas.getContext('2d');
+    img = document.getElementById('source-image');
+    
+    setupCanvasListeners();
+    fetchItems();
+});
 
 async function fetchItems() {
-    const response = await fetch(`${API_URL}/items`);
-    items = await response.json();
-    renderSidebar();
+    try {
+        const response = await fetch(`${API_URL}/items`);
+        items = await response.json();
+        renderSidebar();
+    } catch (e) {
+        console.error("Failed to fetch items:", e);
+    }
 }
 
 function renderSidebar() {
     const list = document.getElementById('item-list');
     list.innerHTML = items.map(item => `
-        <div onclick="selectItem(${item.id})" class="p-3 rounded-xl cursor-pointer transition-all border border-transparent hover:bg-slate-50 ${currentItem?.id === item.id ? 'sidebar-active shadow-sm' : ''}">
+        <div onclick="selectItem(${item.id})" class="p-3 rounded-xl cursor-pointer transition-all border border-transparent hover:bg-slate-100 ${currentItem?.id === item.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : ''}">
             <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500">
+                <div class="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center text-slate-500">
                     <i data-lucide="${getIcon(item.task_type)}" class="w-4 h-4"></i>
                 </div>
                 <div class="flex-1 overflow-hidden">
-                    <p class="text-sm font-semibold truncate text-slate-700">${item.content.substring(0, 20)}...</p>
-                    <p class="text-[10px] text-slate-400 uppercase font-bold">${item.task_type.replace('_', ' ')}</p>
+                    <p class="text-sm font-semibold truncate text-slate-700">${item.task_type === 'bbox' ? 'Image Task' : item.content.substring(0, 20)}</p>
+                    <p class="text-[10px] text-slate-400 uppercase font-bold tracking-tight">${item.task_type.replace('_', ' ')}</p>
                 </div>
-                ${item.annotation ? '<i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>' : ''}
+                ${item.annotation ? '<i data-lucide="check-circle" class="w-4 h-4 text-emerald-500"></i>' : ''}
             </div>
         </div>
     `).join('');
@@ -44,10 +55,15 @@ function getIcon(type) {
 async function selectItem(id) {
     const response = await fetch(`${API_URL}/items/${id}`);
     currentItem = await response.json();
-    annotations = currentItem.annotation ? 
-        (Array.isArray(currentItem.annotation) ? currentItem.annotation : [currentItem.annotation]) 
-        : [];
     
+    const rawAnn = currentItem.annotation;
+    if (rawAnn) {
+        annotations = typeof rawAnn === 'string' ? JSON.parse(rawAnn) : rawAnn;
+    } else {
+        annotations = [];
+    }
+    
+    activeLabel = null;
     document.getElementById('welcome-screen').classList.add('hidden');
     document.getElementById('item-title').innerText = `Item #${id}`;
     document.getElementById('task-badge').innerText = currentItem.task_type.replace('_', ' ');
@@ -60,8 +76,10 @@ async function selectItem(id) {
 
 function renderLabels() {
     const container = document.getElementById('label-container');
-    container.innerHTML = currentItem.label_config.map((label, idx) => `
-        <button onclick="setActiveLabel('${label}')" id="btn-label-${label}" class="px-4 py-2 rounded-lg border-2 border-slate-200 text-sm font-bold transition-all hover:border-indigo-400 ${activeLabel === label ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white text-slate-600'}">
+    const labels = typeof currentItem.label_config === 'string' ? JSON.parse(currentItem.label_config) : currentItem.label_config;
+    
+    container.innerHTML = labels.map(label => `
+        <button onclick="setActiveLabel('${label}')" class="px-4 py-2 rounded-lg border-2 text-sm font-bold transition-all ${activeLabel === label ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-400'}">
             ${label}
         </button>
     `).join('');
@@ -95,66 +113,63 @@ function setupEditor() {
         textEditor.classList.remove('hidden');
         const contentDiv = document.getElementById('text-content');
         contentDiv.innerText = currentItem.content;
-        if (currentItem.task_type === 'ner') {
-            contentDiv.onmouseup = handleTextSelection;
-        }
+        contentDiv.onmouseup = currentItem.task_type === 'ner' ? handleTextSelection : null;
     }
 }
 
 function handleTextSelection() {
     if (currentItem.task_type !== 'ner' || !activeLabel) return;
-    
-    const selection = window.getSelection();
-    if (selection.rangeCount > 0 && selection.toString().length > 0) {
-        const range = selection.getRangeAt(0);
-        const start = range.startOffset;
-        const end = range.endOffset;
-        
-        annotations.push({ start, end, label: activeLabel, text: selection.toString() });
+    const sel = window.getSelection();
+    if (sel.rangeCount > 0 && sel.toString().trim().length > 0) {
+        annotations.push({
+            label: activeLabel,
+            text: sel.toString(),
+            start: sel.anchorOffset,
+            end: sel.focusOffset
+        });
         renderAnnotations();
-        selection.removeAllRanges();
+        sel.removeAllRanges();
     }
 }
 
-canvas.onmousedown = (e) => {
-    if (currentItem.task_type !== 'bbox' || !activeLabel) return;
-    isDrawing = true;
-    const rect = canvas.getBoundingClientRect();
-    startX = e.clientX - rect.left;
-    startY = e.clientY - rect.top;
-};
+function setupCanvasListeners() {
+    canvas.onmousedown = (e) => {
+        if (currentItem?.task_type !== 'bbox' || !activeLabel) return;
+        isDrawing = true;
+        const rect = canvas.getBoundingClientRect();
+        startX = e.clientX - rect.left;
+        startY = e.clientY - rect.top;
+    };
 
-canvas.onmousemove = (e) => {
-    if (!isDrawing) return;
-    const rect = canvas.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
-    
-    drawBoxes();
-    ctx.strokeStyle = '#6366f1';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
-};
+    canvas.onmousemove = (e) => {
+        if (!isDrawing) return;
+        const rect = canvas.getBoundingClientRect();
+        drawBoxes();
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(startX, startY, (e.clientX - rect.left) - startX, (e.clientY - rect.top) - startY);
+    };
 
-canvas.onmouseup = (e) => {
-    if (!isDrawing) return;
-    isDrawing = false;
-    const rect = canvas.getBoundingClientRect();
-    const endX = e.clientX - rect.left;
-    const endY = e.clientY - rect.top;
-    
-    annotations.push({
-        label: activeLabel,
-        bbox: {
-            x: Math.min(startX, endX) / canvas.width,
-            y: Math.min(startY, endY) / canvas.height,
-            w: Math.abs(endX - startX) / canvas.width,
-            h: Math.abs(endY - startY) / canvas.height
-        }
-    });
-    drawBoxes();
-    renderAnnotations();
-};
+    canvas.onmouseup = (e) => {
+        if (!isDrawing) return;
+        isDrawing = false;
+        const rect = canvas.getBoundingClientRect();
+        const endX = e.clientX - rect.left;
+        const endY = e.clientY - rect.top;
+        
+        annotations.push({
+            label: activeLabel,
+            bbox: {
+                x: Math.min(startX, endX) / canvas.width,
+                y: Math.min(startY, endY) / canvas.height,
+                w: Math.abs(endX - startX) / canvas.width,
+                h: Math.abs(endY - startY) / canvas.height
+            }
+        });
+        drawBoxes();
+        renderAnnotations();
+    };
+}
 
 function drawBoxes() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -164,7 +179,6 @@ function drawBoxes() {
         const y = ann.bbox.y * canvas.height;
         const w = ann.bbox.w * canvas.width;
         const h = ann.bbox.h * canvas.height;
-        
         ctx.strokeStyle = '#6366f1';
         ctx.lineWidth = 3;
         ctx.strokeRect(x, y, w, h);
@@ -175,7 +189,9 @@ function drawBoxes() {
 
 function renderAnnotations() {
     const preview = document.getElementById('annotation-preview');
-    if (Object.keys(annotations).length === 0 || (Array.isArray(annotations) && annotations.length === 0)) {
+    const hasData = Array.isArray(annotations) ? annotations.length > 0 : annotations.label;
+
+    if (!hasData) {
         preview.innerHTML = '<p class="text-sm text-slate-400 italic">No labels applied yet.</p>';
         return;
     }
@@ -187,18 +203,16 @@ function renderAnnotations() {
                 <button onclick="annotations={}; renderAnnotations();" class="text-indigo-300 hover:text-red-500">
                     <i data-lucide="x-circle" class="w-4 h-4"></i>
                 </button>
-            </div>
-        `;
+            </div>`;
     } else {
         preview.innerHTML = annotations.map((ann, idx) => `
-            <div class="p-2 bg-white border border-slate-200 rounded-lg flex justify-between items-center text-xs group">
-                <span class="font-bold text-slate-500">${ann.label}</span>
-                <span class="text-slate-400">${ann.text ? ann.text.substring(0, 10) + '...' : 'Box'}</span>
-                <button onclick="removeAnnotation(${idx})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all">
+            <div class="p-2 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center text-xs group mb-2">
+                <span class="font-bold text-indigo-600">${ann.label}</span>
+                <span class="text-slate-500 truncate ml-2 mr-2">${ann.text || 'Box'}</span>
+                <button onclick="removeAnnotation(${idx})" class="text-slate-300 hover:text-red-500 transition-all">
                     <i data-lucide="trash-2" class="w-3 h-3"></i>
                 </button>
-            </div>
-        `).join('');
+            </div>`).join('');
     }
     lucide.createIcons();
 }
@@ -212,23 +226,23 @@ function removeAnnotation(index) {
 async function saveAnnotation() {
     const btn = document.getElementById('save-btn');
     btn.disabled = true;
-    
     try {
         await fetch(`${API_URL}/items/${currentItem.id}/annotation`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ annotation: annotations })
+            body: JSON.stringify({ annotation: JSON.stringify(annotations) })
         });
-        
         const itemIndex = items.findIndex(i => i.id === currentItem.id);
         items[itemIndex].annotation = annotations;
         renderSidebar();
-        
+        btn.innerHTML = 'Saved!';
         btn.classList.replace('bg-indigo-600', 'bg-emerald-500');
         setTimeout(() => {
+            btn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i> Save Annotation';
             btn.classList.replace('bg-emerald-500', 'bg-indigo-600');
             btn.disabled = false;
-        }, 1000);
+            lucide.createIcons();
+        }, 1500);
     } catch (e) {
         alert("Save failed");
         btn.disabled = false;
@@ -237,12 +251,8 @@ async function saveAnnotation() {
 
 function exportJSON() {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(items, null, 2));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", "minilabel_export.json");
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+    const dlAnchor = document.createElement('a');
+    dlAnchor.setAttribute("href", dataStr);
+    dlAnchor.setAttribute("download", "minilabel_export.json");
+    dlAnchor.click();
 }
-
-fetchItems();
