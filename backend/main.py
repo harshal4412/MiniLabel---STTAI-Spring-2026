@@ -92,7 +92,7 @@ async def catch_all(path_name: str):
         return RedirectResponse(url=f"/{path_name}")
         
     file_path = os.path.join("frontend", path_name)
-    if os.path.exists(file_path):
+    if os.path.exists(file_path) and os.path.isfile(file_path):
         return FileResponse(file_path)
         
     return FileResponse("frontend/index.html")

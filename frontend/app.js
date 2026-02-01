@@ -19,31 +19,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function fetchItems() {
     try {
-        const response = await fetch(`${API_URL}/items`);
-        if (!response.ok) throw new Error('Network response was not ok');
+        const response = await fetch(`${API_URL}/items/`);
+        if (!response.ok) throw new Error('Failed to fetch');
         items = await response.json();
         renderSidebar();
     } catch (e) {
-        console.error("Failed to fetch items:", e);
+        console.error("Data Fetch Error:", e);
+        const list = document.getElementById('item-list');
+        list.innerHTML = '<p class="text-xs text-red-400 p-4">Error loading data. Check console.</p>';
     }
 }
 
 function renderSidebar() {
     const list = document.getElementById('item-list');
-    list.innerHTML = items.map(item => `
-        <div onclick="selectItem(${item.id})" class="p-3 rounded-xl cursor-pointer transition-all border border-transparent hover:bg-slate-100 ${currentItem?.id === item.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : ''}">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center text-slate-500">
-                    <i data-lucide="${getIcon(item.task_type)}" class="w-4 h-4"></i>
+    if (items.length === 0) {
+        list.innerHTML = '<p class="text-xs text-slate-400 p-4 text-center">No tasks found. Run /seed.</p>';
+        return;
+    }
+
+    list.innerHTML = items.map(item => {
+        const isAnnotated = item.annotation && item.annotation !== "[]" && item.annotation !== "{}";
+        return `
+            <div onclick="selectItem(${item.id})" class="p-3 rounded-xl cursor-pointer transition-all border border-transparent hover:bg-slate-100 ${currentItem?.id === item.id ? 'bg-indigo-50 border-indigo-200 shadow-sm' : ''}">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center text-slate-500">
+                        <i data-lucide="${getIcon(item.task_type)}" class="w-4 h-4"></i>
+                    </div>
+                    <div class="flex-1 overflow-hidden">
+                        <p class="text-sm font-semibold truncate text-slate-700">${item.task_type === 'bbox' ? 'Image Task' : item.content.substring(0, 20)}</p>
+                        <p class="text-[10px] text-slate-400 uppercase font-bold tracking-tight">${item.task_type.replace('_', ' ')}</p>
+                    </div>
+                    ${isAnnotated ? '<i data-lucide="check-circle" class="w-4 h-4 text-emerald-500"></i>' : ''}
                 </div>
-                <div class="flex-1 overflow-hidden">
-                    <p class="text-sm font-semibold truncate text-slate-700">${item.task_type === 'bbox' ? 'Image Task' : item.content.substring(0, 20)}</p>
-                    <p class="text-[10px] text-slate-400 uppercase font-bold tracking-tight">${item.task_type.replace('_', ' ')}</p>
-                </div>
-                ${item.annotation ? '<i data-lucide="check-circle" class="w-4 h-4 text-emerald-500"></i>' : ''}
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
     lucide.createIcons();
 }
 
@@ -75,7 +85,7 @@ async function selectItem(id) {
         setupEditor();
         renderAnnotations();
     } catch (e) {
-        console.error("Error selecting item:", e);
+        console.error("Select Error:", e);
     }
 }
 
@@ -128,7 +138,7 @@ function handleTextSelection() {
     if (sel.rangeCount > 0 && sel.toString().trim().length > 0) {
         annotations.push({
             label: activeLabel,
-            text: sel.toString(),
+            text: sel.toString().trim(),
             start: sel.anchorOffset,
             end: sel.focusOffset
         });
